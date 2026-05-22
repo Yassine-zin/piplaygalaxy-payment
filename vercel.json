@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "name": "gamespace-galaxy",
+  "builds": [
+    { "src": "*.html", "use": "@vercel/static" },
+    { "src": "api/*.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/(.*)", "dest": "/$1" }
+  ],
+  "env": {
+    "PI_API_KEY": "@pi-api-key"
+  }
+}
+
