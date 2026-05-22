@@ -84,6 +84,11 @@ button:active{
 transform:scale(.97);
 }
 
+button:disabled{
+opacity:0.5;
+cursor:not-allowed;
+}
+
 .login{background:#2563eb;}
 .reward{background:#16a34a;}
 .mission{background:#ea580c;}
@@ -114,6 +119,23 @@ text-align:center;
 background:rgba(255,215,0,.12);
 display:none;
 font-weight:bold;
+border:1px solid rgba(255,215,0,0.3);
+}
+
+.loading{
+display:inline-block;
+width:20px;
+height:20px;
+border:3px solid rgba(255,255,255,.3);
+border-radius:50%;
+border-top-color:white;
+animation:spin 1s ease-in-out infinite;
+margin-left:10px;
+vertical-align:middle;
+}
+
+@keyframes spin{
+to{transform:rotate(360deg);}
 }
 </style>
 </head>
@@ -139,11 +161,11 @@ Play • Earn • Rule the Pi Universe
 🪙 Reward: <span id="coins">0.00</span> π
 </div>
 
-<button class="login" onclick="loginPi()">
+<button class="login" onclick="loginPi()" id="loginBtn">
 🔐 Login with Pi
 </button>
 
-<button class="reward" onclick="claimReward()">
+<button class="reward" onclick="claimReward()" id="rewardBtn">
 🎁 Claim Daily Reward
 </button>
 
@@ -151,7 +173,7 @@ Play • Earn • Rule the Pi Universe
 ⚔️ Start Mission
 </button>
 
-<button class="premium" onclick="premiumAccess()">
+<button class="premium" onclick="premiumAccess()" id="premiumBtn">
 💎 Premium Access
 </button>
 
@@ -164,7 +186,7 @@ Welcome Commander
 </div>
 
 <div class="small">
-Powered by Pi Network
+Powered by Pi Network | Testnet
 </div>
 
 </div>
@@ -180,6 +202,7 @@ let currentUser = localStorage.getItem("gg_user") || "Guest Mode";
 let xp = parseInt(localStorage.getItem("gg_xp")) || 0;
 let coins = parseFloat(localStorage.getItem("gg_coins")) || 0;
 let premium = localStorage.getItem("gg_premium") || "false";
+let userAddress = localStorage.getItem("gg_address") || "";
 
 /* =========================
    SAVE
@@ -190,6 +213,7 @@ localStorage.setItem("gg_user", currentUser);
 localStorage.setItem("gg_xp", xp);
 localStorage.setItem("gg_coins", coins);
 localStorage.setItem("gg_premium", premium);
+localStorage.setItem("gg_address", userAddress);
 }
 
 /* =========================
@@ -216,8 +240,12 @@ document.getElementById("rank").innerText = rank;
 
 if(premium === "true"){
 document.getElementById("vipbox").style.display="block";
+document.getElementById("premiumBtn").disabled = true;
+document.getElementById("premiumBtn").innerText = "✅ Premium Active";
 }else{
 document.getElementById("vipbox").style.display="none";
+document.getElementById("premiumBtn").disabled = false;
+document.getElementById("premiumBtn").innerText = "💎 Premium Access";
 }
 
 saveGame();
@@ -229,18 +257,28 @@ saveGame();
 
 async function loginPi(){
 
+const statusEl = document.getElementById("status");
+const loginBtn = document.getElementById("loginBtn");
+
 try{
 
+statusEl.innerHTML = "Initializing Pi SDK... <span class='loading'></span>";
+loginBtn.disabled = true;
+
+// Initialize Pi SDK for Testnet
 Pi.init({
 version:"2.0",
-sandbox:false
+sandbox:true  // ✅ Testnet
 });
 
 const scopes = ['username','payments'];
 
 function onIncompletePaymentFound(payment){
-console.log(payment);
+console.log("Incomplete payment found:", payment);
+// Handle incomplete payment
 }
+
+statusEl.innerHTML = "Authenticating... <span class='loading'></span>";
 
 const auth = await Pi.authenticate(
 scopes,
@@ -248,18 +286,18 @@ onIncompletePaymentFound
 );
 
 currentUser = auth.user.username;
+userAddress = auth.user.address;
 
-document.getElementById("status").innerText =
-"Welcome " + currentUser;
+statusEl.innerHTML = "Welcome " + currentUser + "!";
+loginBtn.disabled = false;
 
 updateUI();
 
 }catch(e){
 
-document.getElementById("status").innerText =
-"Login failed";
-
 console.log(e);
+statusEl.innerText = "Login failed: " + e.message;
+loginBtn.disabled = false;
 
 }
 
@@ -271,11 +309,23 @@ console.log(e);
 
 function claimReward(){
 
+const lastClaim = localStorage.getItem("gg_last_reward");
+const now = Date.now();
+const oneDay = 24 * 60 * 60 * 1000;
+
+if(lastClaim && (now - lastClaim) < oneDay){
+const hoursLeft = Math.ceil((oneDay - (now - lastClaim)) / (60 * 60 * 1000));
+document.getElementById("status").innerText = 
+`Come back in ${hoursLeft}h for next reward!`;
+return;
+}
+
 coins += 0.01;
 xp += 10;
+localStorage.setItem("gg_last_reward", now);
 
-document.getElementById("status").innerText =
-"Reward Claimed +0.01 π";
+document.getElementById("status").innerText = 
+"🎁 Reward Claimed! +0.01 π | +10 XP";
 
 updateUI();
 }
@@ -286,12 +336,16 @@ updateUI();
 
 function startMission(){
 
+const statusEl = document.getElementById("status");
+statusEl.innerHTML = "⚔️ Mission in progress... <span class='loading'></span>";
+
+setTimeout(() => {
 xp += 25;
-
-document.getElementById("status").innerText =
-"Mission Complete +25 XP";
-
+coins += 0.005;
+statusEl.innerText = "✅ Mission Complete! +25 XP | +0.005 π";
 updateUI();
+}, 2000);
+
 }
 
 /* =========================
@@ -300,49 +354,100 @@ updateUI();
 
 async function premiumAccess(){
 
+const statusEl = document.getElementById("status");
+const premiumBtn = document.getElementById("premiumBtn");
+
 try{
+
+statusEl.innerHTML = "Creating payment... <span class='loading'></span>";
+premiumBtn.disabled = true;
 
 await Pi.createPayment(
 {
-amount:0.10,
-memo:"Premium Access",
-metadata:{type:"premium"}
+amount: 0.10,
+memo: "Premium Access - GameSpace Galaxy",
+metadata: { 
+type: "premium",
+userId: currentUser,
+timestamp: Date.now()
+}
 },
 {
-onReadyForServerApproval:function(paymentId){
-document.getElementById("status").innerText =
-"Waiting approval...";
+onReadyForServerApproval: function(paymentId){
+console.log("Payment ready for approval:", paymentId);
+statusEl.innerHTML = "Approving payment... <span class='loading'></span>";
+
+// Send to backend for approval
+fetch('/api/approve', {
+method: 'POST',
+headers: {
+'Content-Type': 'application/json'
+},
+body: JSON.stringify({ paymentId })
+})
+.then(res => res.json())
+.then(data => {
+console.log("Approval response:", data);
+})
+.catch(err => {
+console.error("Approval error:", err);
+});
 },
 
-onReadyForServerCompletion:function(paymentId, txid){
+onReadyForServerCompletion: function(paymentId, txid){
+console.log("Payment ready for completion:", paymentId, txid);
+statusEl.innerHTML = "Completing payment... <span class='loading'></span>";
 
+// Send to backend for completion
+fetch('/api/complete', {
+method: 'POST',
+headers: {
+'Content-Type': 'application/json'
+},
+body: JSON.stringify({ 
+paymentId,
+txid,
+userId: currentUser
+})
+})
+.then(res => res.json())
+.then(data => {
+if(data.success){
 premium = "true";
 xp += 100;
-
-document.getElementById("status").innerText =
-"Premium Activated!";
-
+statusEl.innerText = "🎉 Premium Activated! +100 XP";
 updateUI();
+} else {
+statusEl.innerText = "Payment verification failed";
+premiumBtn.disabled = false;
+}
+})
+.catch(err => {
+console.error("Completion error:", err);
+statusEl.innerText = "Server error";
+premiumBtn.disabled = false;
+});
 },
 
-onCancel:function(paymentId){
-document.getElementById("status").innerText =
-"Payment Cancelled";
+onCancel: function(paymentId){
+console.log("Payment cancelled:", paymentId);
+statusEl.innerText = "❌ Payment Cancelled";
+premiumBtn.disabled = false;
 },
 
-onError:function(error){
-document.getElementById("status").innerText =
-"Payment Error";
+onError: function(error, payment){
+console.error("Payment error:", error, payment);
+statusEl.innerText = "❌ Payment Error: " + error.message;
+premiumBtn.disabled = false;
 }
 }
 );
 
 }catch(err){
 
-document.getElementById("status").innerText =
-"Premium Error";
-
 console.log(err);
+statusEl.innerText = "Premium Error: " + err.message;
+premiumBtn.disabled = false;
 
 }
 
@@ -352,8 +457,14 @@ console.log(err);
    AUTO LOAD
 ========================= */
 
+window.onload = function() {
 updateUI();
+console.log("GameSpace Galaxy Loaded - Testnet Mode");
+console.log("PiNet Subdomain: gamespacegalaxy1939");
+};
+
 </script>
 
 </body>
 </html>
+
